@@ -7,7 +7,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,9 +21,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -38,27 +42,44 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.layout.onSizeChanged
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import android.graphics.Color as AndroidColor
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.min
+import kotlin.math.sin
+import kotlin.math.sqrt
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -70,6 +91,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             var themeMode by rememberSaveable { mutableStateOf(ThemeMode.SYSTEM) }
+            var progressBarColorArgb by rememberSaveable { mutableStateOf(0xFF3F51B5.toInt()) }
             ScheduleTheme(themeMode = themeMode) {
                 Surface(color = MaterialTheme.colorScheme.surface) {
                     val viewModel: ScheduleViewModel = viewModel()
@@ -77,7 +99,9 @@ class MainActivity : ComponentActivity() {
                     ScheduleScreen(
                         state = state,
                         themeMode = themeMode,
+                        progressBarColor = Color(progressBarColorArgb),
                         onThemeModeChange = { themeMode = it },
+                        onProgressBarColorChange = { color -> progressBarColorArgb = color.toArgb() },
                         onTimeZoneModeChange = viewModel::setTimeZoneMode,
                         onGpsPermissionChange = viewModel::setGpsPermissionGranted,
                         onLocationChange = viewModel::setSelectedLocation
@@ -137,7 +161,9 @@ class ScheduleViewModel : ViewModel() {
 fun ScheduleScreen(
     state: ScheduleUiState,
     themeMode: ThemeMode,
+    progressBarColor: Color,
     onThemeModeChange: (ThemeMode) -> Unit,
+    onProgressBarColorChange: (Color) -> Unit,
     onTimeZoneModeChange: (TimeZoneMode) -> Unit,
     onGpsPermissionChange: (Boolean) -> Unit,
     onLocationChange: (TimeZoneLocation) -> Unit
@@ -216,7 +242,8 @@ fun ScheduleScreen(
                 LessonRow(
                     lesson = lesson,
                     isActive = state.snapshot.activeIndex == index,
-                    now = state.time
+                    now = state.time,
+                    progressBarColor = progressBarColor
                 )
             }
         }
@@ -230,7 +257,9 @@ fun ScheduleScreen(
             SettingsSheet(
                 state = state,
                 themeMode = themeMode,
+                progressBarColor = progressBarColor,
                 onThemeModeChange = onThemeModeChange,
+                onProgressBarColorChange = onProgressBarColorChange,
                 onTimeZoneModeChange = onTimeZoneModeChange,
                 onLocationChange = onLocationChange,
                 onRequestGpsPermission = { permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) }
@@ -243,7 +272,9 @@ fun ScheduleScreen(
 private fun SettingsSheet(
     state: ScheduleUiState,
     themeMode: ThemeMode,
+    progressBarColor: Color,
     onThemeModeChange: (ThemeMode) -> Unit,
+    onProgressBarColorChange: (Color) -> Unit,
     onTimeZoneModeChange: (TimeZoneMode) -> Unit,
     onLocationChange: (TimeZoneLocation) -> Unit,
     onRequestGpsPermission: () -> Unit
@@ -333,7 +364,285 @@ private fun SettingsSheet(
             onLocationChange = onLocationChange,
             onRequestGpsPermission = onRequestGpsPermission
         )
+        ProgressColorSettingsCard(
+            progressBarColor = progressBarColor,
+            onProgressBarColorChange = onProgressBarColorChange
+        )
     }
+}
+
+@Composable
+private fun ProgressColorSettingsCard(
+    progressBarColor: Color,
+    onProgressBarColorChange: (Color) -> Unit
+) {
+    val dimens = LocalDimens.current
+    val presets = progressColorPresets
+    val isCustom = presets.none { preset -> preset.color.toArgb() == progressBarColor.toArgb() }
+    var hexValue by rememberSaveable { mutableStateOf(colorToHex(progressBarColor)) }
+
+    LaunchedEffect(progressBarColor) {
+        hexValue = colorToHex(progressBarColor)
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(dimens.medium.dp)) {
+            Text(
+                text = "Цвет прогресс-бара",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(dimens.tiny.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(dimens.small.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                presets.forEach { preset ->
+                    ColorPresetChip(
+                        color = preset.color,
+                        label = preset.name,
+                        isSelected = preset.color.toArgb() == progressBarColor.toArgb(),
+                        onClick = { onProgressBarColorChange(preset.color) }
+                    )
+                }
+                PaletteChip(
+                    isSelected = isCustom,
+                    onClick = { }
+                )
+            }
+            Spacer(modifier = Modifier.height(dimens.small.dp))
+            Text(
+                text = "Палитра",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            )
+            Spacer(modifier = Modifier.height(dimens.small.dp))
+            ColorWheelPicker(
+                selectedColor = progressBarColor,
+                onColorChange = onProgressBarColorChange
+            )
+            Spacer(modifier = Modifier.height(dimens.small.dp))
+            OutlinedTextField(
+                value = hexValue,
+                onValueChange = { newValue ->
+                    val normalized = newValue.trim().replace(" ", "").uppercase()
+                    hexValue = normalized
+                    parseHexColor(normalized)?.let { parsed ->
+                        onProgressBarColorChange(parsed)
+                    }
+                },
+                label = { Text(text = "HEX") },
+                placeholder = { Text(text = "#FFAA33") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun ColorPresetChip(
+    color: Color,
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val borderColor = if (isSelected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .width(40.dp)
+                .height(40.dp)
+                .clip(CircleShape)
+                .background(color)
+                .clickable(onClick = onClick)
+                .border(width = 2.dp, color = borderColor, shape = CircleShape)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+        )
+    }
+}
+
+@Composable
+private fun PaletteChip(
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val borderColor = if (isSelected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Canvas(
+            modifier = Modifier
+                .width(40.dp)
+                .height(40.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onClick)
+        ) {
+            drawCircle(
+                brush = Brush.sweepGradient(
+                    listOf(
+                        Color.Red,
+                        Color.Yellow,
+                        Color.Green,
+                        Color.Cyan,
+                        Color.Blue,
+                        Color.Magenta,
+                        Color.Red
+                    )
+                )
+            )
+            drawCircle(
+                color = borderColor,
+                radius = size.minDimension / 2,
+                style = Stroke(width = 2f)
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Палитра",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+        )
+    }
+}
+
+@Composable
+private fun ColorWheelPicker(
+    selectedColor: Color,
+    onColorChange: (Color) -> Unit
+) {
+    val dimens = LocalDimens.current
+    val hsv = FloatArray(3).apply { AndroidColor.colorToHSV(selectedColor.toArgb(), this) }
+    val value = 1f
+    var wheelSize by remember { mutableStateOf(IntSize.Zero) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(200.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(
+            modifier = Modifier
+                .height(180.dp)
+                .width(180.dp)
+                .onSizeChanged { wheelSize = it }
+                .pointerInput(selectedColor, wheelSize) {
+                    val updateColor: (Offset) -> Unit = updateColor@{ offset ->
+                        if (wheelSize.width == 0 || wheelSize.height == 0) return@updateColor
+                        val radius = min(wheelSize.width, wheelSize.height) / 2f
+                        val center = Offset(wheelSize.width / 2f, wheelSize.height / 2f)
+                        val dx = offset.x - center.x
+                        val dy = offset.y - center.y
+                        val distance = sqrt(dx * dx + dy * dy)
+                        val clampedDistance = min(distance, radius)
+                        val saturation = (clampedDistance / radius).coerceIn(0f, 1f)
+                        val hue = ((atan2(dy, dx) + PI) / (2 * PI) * 360f).toFloat()
+                        onColorChange(Color.hsv(hue, saturation, value))
+                    }
+                    detectTapGestures { offset -> updateColor(offset) }
+                    detectDragGestures { change, _ -> updateColor(change.position) }
+                }
+        ) {
+            val radius = size.minDimension / 2
+            val center = Offset(size.width / 2f, size.height / 2f)
+            drawCircle(
+                brush = Brush.sweepGradient(
+                    listOf(
+                        Color.Red,
+                        Color.Yellow,
+                        Color.Green,
+                        Color.Cyan,
+                        Color.Blue,
+                        Color.Magenta,
+                        Color.Red
+                    )
+                ),
+                radius = radius,
+                center = center
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color.White, Color.Transparent),
+                    center = center,
+                    radius = radius
+                ),
+                radius = radius,
+                center = center
+            )
+
+            val angle = (hsv[0] / 360f) * (2f * PI) - PI
+            val indicatorRadius = 6.dp.toPx()
+            val indicatorPosition = Offset(
+                x = center.x + cos(angle.toDouble()).toFloat() * radius * hsv[1],
+                y = center.y + sin(angle.toDouble()).toFloat() * radius * hsv[1]
+            )
+            drawCircle(
+                color = Color.White,
+                radius = indicatorRadius + 2f,
+                center = indicatorPosition
+            )
+            drawCircle(
+                color = selectedColor,
+                radius = indicatorRadius,
+                center = indicatorPosition
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = dimens.small.dp)
+                .width(60.dp)
+                .height(24.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(selectedColor)
+        )
+    }
+}
+
+private data class ProgressColorPreset(
+    val name: String,
+    val color: Color
+)
+
+private val progressColorPresets = listOf(
+    ProgressColorPreset("Индиго", Color(0xFF3F51B5)),
+    ProgressColorPreset("Лайм", Color(0xFF43A047)),
+    ProgressColorPreset("Янтарь", Color(0xFFFF9800)),
+    ProgressColorPreset("Малина", Color(0xFFE53935)),
+    ProgressColorPreset("Море", Color(0xFF1E88E5))
+)
+
+private fun parseHexColor(value: String): Color? {
+    val cleaned = value.removePrefix("#")
+    if (cleaned.length != 6 && cleaned.length != 8) return null
+    val parsed = cleaned.toLongOrNull(16) ?: return null
+    val argb = if (cleaned.length == 6) {
+        (0xFF000000 or parsed).toInt()
+    } else {
+        parsed.toInt()
+    }
+    return Color(argb)
+}
+
+private fun colorToHex(color: Color): String {
+    val rgb = color.toArgb() and 0x00FFFFFF
+    return "#%06X".format(rgb)
 }
 
 @Composable
@@ -462,7 +771,7 @@ private fun ThemeMenuItem(
 }
 
 @Composable
-fun LessonRow(lesson: Lesson, isActive: Boolean, now: LocalTime) {
+fun LessonRow(lesson: Lesson, isActive: Boolean, now: LocalTime, progressBarColor: Color) {
     val dimens = LocalDimens.current
     val progress = lesson.progress(now)
     val passed = lesson.passedMinutes(now)
@@ -497,7 +806,7 @@ fun LessonRow(lesson: Lesson, isActive: Boolean, now: LocalTime) {
                 )
             }
             Spacer(modifier = Modifier.height(dimens.small.dp))
-            ProgressWithHalfMarker(progress = progress)
+            ProgressWithHalfMarker(progress = progress, progressBarColor = progressBarColor)
             Spacer(modifier = Modifier.height(dimens.tiny.dp))
             Text(
                 text = "Осталось: ${remaining} мин",
@@ -509,7 +818,7 @@ fun LessonRow(lesson: Lesson, isActive: Boolean, now: LocalTime) {
 }
 
 @Composable
-fun ProgressWithHalfMarker(progress: Float) {
+fun ProgressWithHalfMarker(progress: Float, progressBarColor: Color) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -517,6 +826,8 @@ fun ProgressWithHalfMarker(progress: Float) {
     ) {
         LinearProgressIndicator(
             progress = { progress },
+            color = progressBarColor,
+            trackColor = progressBarColor.copy(alpha = 0.18f),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(6.dp)
