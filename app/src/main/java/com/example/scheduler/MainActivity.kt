@@ -32,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -131,6 +132,7 @@ class ScheduleViewModel : ViewModel() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleScreen(
     state: ScheduleUiState,
@@ -393,113 +395,6 @@ private fun SettingsSheet(
                     }
                     DropdownMenu(
                         expanded = locationExpanded && manualEnabled,
-                        onDismissRequest = { locationExpanded = false }
-                    ) {
-                        timeZoneLocations.forEach { location ->
-                            DropdownMenuItem(
-                                text = { Text(text = location.label) },
-                                onClick = {
-                                    onLocationChange(location)
-                                    locationExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TimeZoneSettings(
-    state: ScheduleUiState,
-    onTimeZoneModeChange: (TimeZoneMode) -> Unit,
-    onGpsPermissionChange: (Boolean) -> Unit,
-    onLocationChange: (TimeZoneLocation) -> Unit
-) {
-    val dimens = LocalDimens.current
-    var locationExpanded by remember { mutableStateOf(false) }
-    val isAuto = state.timeZoneMode == TimeZoneMode.AUTO
-    val showManualSelection = !state.gpsPermissionGranted || !isAuto
-
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(modifier = Modifier.padding(dimens.medium.dp)) {
-            Text(
-                text = "Часовой пояс",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(modifier = Modifier.height(dimens.tiny.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "Автоопределение (GPS)",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Switch(
-                    checked = isAuto,
-                    onCheckedChange = { enabled ->
-                        onTimeZoneModeChange(if (enabled) TimeZoneMode.AUTO else TimeZoneMode.MANUAL)
-                    }
-                )
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "Разрешение GPS",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Switch(
-                    checked = state.gpsPermissionGranted,
-                    onCheckedChange = onGpsPermissionChange
-                )
-            }
-            if (showManualSelection) {
-                Spacer(modifier = Modifier.height(dimens.small.dp))
-                Text(
-                    text = if (state.gpsPermissionGranted) {
-                        "Выберите местоположение вручную."
-                    } else {
-                        "GPS недоступен. Выберите местоположение вручную."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-                Spacer(modifier = Modifier.height(dimens.tiny.dp))
-                Box {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surface)
-                            .clickable { locationExpanded = true }
-                            .padding(dimens.small.dp)
-                    ) {
-                        Text(
-                            text = state.selectedLocation.label,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Spacer(modifier = Modifier.weight(1f))
-                        Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = locationExpanded,
                         onDismissRequest = { locationExpanded = false }
                     ) {
                         timeZoneLocations.forEach { location ->
