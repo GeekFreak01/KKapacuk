@@ -67,8 +67,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.layout.onSizeChanged
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -440,10 +438,7 @@ private fun ProgressColorSettingsCard(
                 label = { Text(text = "HEX") },
                 placeholder = { Text(text = "#FFAA33") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Characters
-                )
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
@@ -548,8 +543,8 @@ private fun ColorWheelPicker(
                 .width(180.dp)
                 .onSizeChanged { wheelSize = it }
                 .pointerInput(selectedColor, wheelSize) {
-                    val updateColor: (Offset) -> Unit = { offset ->
-                        if (wheelSize.width == 0 || wheelSize.height == 0) return@pointerInput
+                    val updateColor: (Offset) -> Unit = updateColor@{ offset ->
+                        if (wheelSize.width == 0 || wheelSize.height == 0) return@updateColor
                         val radius = min(wheelSize.width, wheelSize.height) / 2f
                         val center = Offset(wheelSize.width / 2f, wheelSize.height / 2f)
                         val dx = offset.x - center.x
