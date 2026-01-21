@@ -6,6 +6,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.Color
 
 private val LightColors = lightColorScheme(
@@ -31,13 +32,20 @@ class Dimens(
     val large: Int = 24
 )
 
+enum class ThemeMode {
+    SYSTEM,
+    LIGHT,
+    DARK
+}
+
 @Composable
-fun ScheduleTheme(content: @Composable () -> Unit) {
-    val colorScheme = if (androidx.compose.foundation.isSystemInDarkTheme()) {
-        DarkColors
-    } else {
-        LightColors
+fun ScheduleTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
+    val useDarkTheme = when (themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
     }
+    val colorScheme = if (useDarkTheme) DarkColors else LightColors
 
     CompositionLocalProvider(LocalDimens provides Dimens()) {
         MaterialTheme(

@@ -16,8 +16,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -26,6 +33,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,11 +58,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            ScheduleTheme {
+            var themeMode by rememberSaveable { mutableStateOf(ThemeMode.SYSTEM) }
+            ScheduleTheme(themeMode = themeMode) {
                 Surface(color = MaterialTheme.colorScheme.surface) {
                     val viewModel: ScheduleViewModel = viewModel()
                     val state by viewModel.state.collectAsState()
-                    ScheduleScreen(state)
+                    ScheduleScreen(
+                        state = state,
+                        themeMode = themeMode,
+                        onThemeModeChange = { themeMode = it }
+                    )
                 }
             }
         }
@@ -85,8 +101,13 @@ class ScheduleViewModel : ViewModel() {
 }
 
 @Composable
-fun ScheduleScreen(state: ScheduleUiState) {
+fun ScheduleScreen(
+    state: ScheduleUiState,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit
+) {
     val dimens = LocalDimens.current
+    var settingsExpanded by remember { mutableStateOf(false) }
     val header = buildString {
         append(
             when (state.snapshot.variant) {
@@ -106,11 +127,54 @@ fun ScheduleScreen(state: ScheduleUiState) {
     Scaffold(
         topBar = {
             Column(modifier = Modifier.padding(dimens.medium.dp)) {
-                Text(
-                    text = "Расписание",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Расписание",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Box {
+                        IconButton(onClick = { settingsExpanded = true }) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = "Настройки"
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = settingsExpanded,
+                            onDismissRequest = { settingsExpanded = false }
+                        ) {
+                            ThemeMenuItem(
+                                label = "Как на устройстве",
+                                selected = themeMode == ThemeMode.SYSTEM,
+                                onClick = {
+                                    onThemeModeChange(ThemeMode.SYSTEM)
+                                    settingsExpanded = false
+                                }
+                            )
+                            ThemeMenuItem(
+                                label = "День",
+                                selected = themeMode == ThemeMode.LIGHT,
+                                onClick = {
+                                    onThemeModeChange(ThemeMode.LIGHT)
+                                    settingsExpanded = false
+                                }
+                            )
+                            ThemeMenuItem(
+                                label = "Ночь",
+                                selected = themeMode == ThemeMode.DARK,
+                                onClick = {
+                                    onThemeModeChange(ThemeMode.DARK)
+                                    settingsExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
                 Text(
                     text = header,
                     style = MaterialTheme.typography.bodyMedium,
@@ -139,6 +203,26 @@ fun ScheduleScreen(state: ScheduleUiState) {
             }
         }
     }
+}
+
+@Composable
+private fun ThemeMenuItem(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    DropdownMenuItem(
+        text = { Text(text = label) },
+        leadingIcon = {
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null
+                )
+            }
+        },
+        onClick = onClick
+    )
 }
 
 @Composable
