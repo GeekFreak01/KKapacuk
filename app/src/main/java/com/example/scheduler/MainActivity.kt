@@ -431,21 +431,6 @@ private fun TimeZoneSettingsCard(
 }
 
 @Composable
-private fun TimeZoneSettings(
-    state: ScheduleUiState,
-    onTimeZoneModeChange: (TimeZoneMode) -> Unit,
-    onGpsPermissionChange: (Boolean) -> Unit,
-    onLocationChange: (TimeZoneLocation) -> Unit
-) {
-    TimeZoneSettingsCard(
-        state = state,
-        onTimeZoneModeChange = onTimeZoneModeChange,
-        onLocationChange = onLocationChange,
-        onRequestGpsPermission = { onGpsPermissionChange(state.gpsPermissionGranted) }
-    )
-}
-
-@Composable
 private fun ThemeMenuItem(
     label: String,
     selected: Boolean,
