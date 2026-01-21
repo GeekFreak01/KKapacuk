@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +30,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -52,6 +54,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
@@ -66,7 +70,10 @@ class MainActivity : ComponentActivity() {
                     ScheduleScreen(
                         state = state,
                         themeMode = themeMode,
-                        onThemeModeChange = { themeMode = it }
+                        onThemeModeChange = { themeMode = it },
+                        onTimeZoneModeChange = viewModel::setTimeZoneMode,
+                        onGpsPermissionChange = viewModel::setGpsPermissionGranted,
+                        onLocationChange = viewModel::setSelectedLocation
                     )
                 }
             }
@@ -77,7 +84,10 @@ class MainActivity : ComponentActivity() {
 data class ScheduleUiState(
     val date: LocalDate = LocalDate.now(),
     val time: LocalTime = LocalTime.now(),
-    val snapshot: ScheduleSnapshot = scheduleSnapshot(LocalDate.now(), LocalTime.now())
+    val snapshot: ScheduleSnapshot = scheduleSnapshot(LocalDate.now(), LocalTime.now()),
+    val timeZoneMode: TimeZoneMode = TimeZoneMode.AUTO,
+    val gpsPermissionGranted: Boolean = true,
+    val selectedLocation: TimeZoneLocation = timeZoneLocations.first()
 )
 
 class ScheduleViewModel : ViewModel() {
@@ -87,16 +97,31 @@ class ScheduleViewModel : ViewModel() {
     init {
         viewModelScope.launch {
             while (true) {
-                val now = LocalTime.now()
-                val date = LocalDate.now()
-                _state.value = ScheduleUiState(
+                val current = _state.value
+                val zoneId = resolveZoneId(current)
+                val now = ZonedDateTime.now(zoneId)
+                val date = now.toLocalDate()
+                val time = now.toLocalTime()
+                _state.value = current.copy(
                     date = date,
-                    time = now,
-                    snapshot = scheduleSnapshot(date, now)
+                    time = time,
+                    snapshot = scheduleSnapshot(date, time)
                 )
                 delay(1000)
             }
         }
+    }
+
+    fun setTimeZoneMode(mode: TimeZoneMode) {
+        _state.value = _state.value.copy(timeZoneMode = mode)
+    }
+
+    fun setGpsPermissionGranted(granted: Boolean) {
+        _state.value = _state.value.copy(gpsPermissionGranted = granted)
+    }
+
+    fun setSelectedLocation(location: TimeZoneLocation) {
+        _state.value = _state.value.copy(selectedLocation = location)
     }
 }
 
@@ -104,7 +129,10 @@ class ScheduleViewModel : ViewModel() {
 fun ScheduleScreen(
     state: ScheduleUiState,
     themeMode: ThemeMode,
-    onThemeModeChange: (ThemeMode) -> Unit
+    onThemeModeChange: (ThemeMode) -> Unit,
+    onTimeZoneModeChange: (TimeZoneMode) -> Unit,
+    onGpsPermissionChange: (Boolean) -> Unit,
+    onLocationChange: (TimeZoneLocation) -> Unit
 ) {
     val dimens = LocalDimens.current
     var settingsExpanded by remember { mutableStateOf(false) }
@@ -185,6 +213,13 @@ fun ScheduleScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
+                Spacer(modifier = Modifier.height(dimens.small.dp))
+                TimeZoneSettings(
+                    state = state,
+                    onTimeZoneModeChange = onTimeZoneModeChange,
+                    onGpsPermissionChange = onGpsPermissionChange,
+                    onLocationChange = onLocationChange
+                )
             }
         }
     ) { padding ->
@@ -200,6 +235,113 @@ fun ScheduleScreen(
                     isActive = state.snapshot.activeIndex == index,
                     now = state.time
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimeZoneSettings(
+    state: ScheduleUiState,
+    onTimeZoneModeChange: (TimeZoneMode) -> Unit,
+    onGpsPermissionChange: (Boolean) -> Unit,
+    onLocationChange: (TimeZoneLocation) -> Unit
+) {
+    val dimens = LocalDimens.current
+    var locationExpanded by remember { mutableStateOf(false) }
+    val isAuto = state.timeZoneMode == TimeZoneMode.AUTO
+    val showManualSelection = !state.gpsPermissionGranted || !isAuto
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(dimens.medium.dp)) {
+            Text(
+                text = "Часовой пояс",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(dimens.tiny.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Автоопределение (GPS)",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Switch(
+                    checked = isAuto,
+                    onCheckedChange = { enabled ->
+                        onTimeZoneModeChange(if (enabled) TimeZoneMode.AUTO else TimeZoneMode.MANUAL)
+                    }
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Разрешение GPS",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Switch(
+                    checked = state.gpsPermissionGranted,
+                    onCheckedChange = onGpsPermissionChange
+                )
+            }
+            if (showManualSelection) {
+                Spacer(modifier = Modifier.height(dimens.small.dp))
+                Text(
+                    text = if (state.gpsPermissionGranted) {
+                        "Выберите местоположение вручную."
+                    } else {
+                        "GPS недоступен. Выберите местоположение вручную."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                Spacer(modifier = Modifier.height(dimens.tiny.dp))
+                Box {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .clickable { locationExpanded = true }
+                            .padding(dimens.small.dp)
+                    ) {
+                        Text(
+                            text = state.selectedLocation.label,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = locationExpanded,
+                        onDismissRequest = { locationExpanded = false }
+                    ) {
+                        timeZoneLocations.forEach { location ->
+                            DropdownMenuItem(
+                                text = { Text(text = location.label) },
+                                onClick = {
+                                    onLocationChange(location)
+                                    locationExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -298,3 +440,29 @@ fun ProgressWithHalfMarker(progress: Float) {
 }
 
 private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+enum class TimeZoneMode {
+    AUTO,
+    MANUAL
+}
+
+data class TimeZoneLocation(
+    val label: String,
+    val zoneId: ZoneId
+)
+
+private val timeZoneLocations = listOf(
+    TimeZoneLocation("Калининград (UTC+2)", ZoneId.of("Europe/Kaliningrad")),
+    TimeZoneLocation("Москва (UTC+3)", ZoneId.of("Europe/Moscow")),
+    TimeZoneLocation("Екатеринбург (UTC+5)", ZoneId.of("Asia/Yekaterinburg")),
+    TimeZoneLocation("Новосибирск (UTC+7)", ZoneId.of("Asia/Novosibirsk")),
+    TimeZoneLocation("Владивосток (UTC+10)", ZoneId.of("Asia/Vladivostok"))
+)
+
+private fun resolveZoneId(state: ScheduleUiState): ZoneId {
+    return if (state.timeZoneMode == TimeZoneMode.AUTO && state.gpsPermissionGranted) {
+        ZoneId.systemDefault()
+    } else {
+        state.selectedLocation.zoneId
+    }
+}
