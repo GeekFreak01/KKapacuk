@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -194,6 +195,13 @@ fun ScheduleScreen(
                     text = "Сейчас: ${state.time.format(DateTimeFormatter.ofPattern("HH:mm"))}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+                Spacer(modifier = Modifier.height(dimens.small.dp))
+                TimeZoneSettings(
+                    state = state,
+                    onTimeZoneModeChange = onTimeZoneModeChange,
+                    onGpsPermissionChange = onGpsPermissionChange,
+                    onLocationChange = onLocationChange
                 )
             }
         }
