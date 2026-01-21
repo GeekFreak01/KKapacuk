@@ -250,9 +250,6 @@ private fun SettingsSheet(
 ) {
     val dimens = LocalDimens.current
     var themeExpanded by remember { mutableStateOf(false) }
-    var locationExpanded by remember { mutableStateOf(false) }
-    val isAuto = state.timeZoneMode == TimeZoneMode.AUTO
-    val manualEnabled = !isAuto
 
     Column(
         modifier = Modifier
@@ -330,87 +327,122 @@ private fun SettingsSheet(
                 }
             }
         }
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Column(modifier = Modifier.padding(dimens.medium.dp)) {
+        TimeZoneSettingsCard(
+            state = state,
+            onTimeZoneModeChange = onTimeZoneModeChange,
+            onLocationChange = onLocationChange,
+            onRequestGpsPermission = onRequestGpsPermission
+        )
+    }
+}
+
+@Composable
+private fun TimeZoneSettingsCard(
+    state: ScheduleUiState,
+    onTimeZoneModeChange: (TimeZoneMode) -> Unit,
+    onLocationChange: (TimeZoneLocation) -> Unit,
+    onRequestGpsPermission: () -> Unit
+) {
+    val dimens = LocalDimens.current
+    var locationExpanded by remember { mutableStateOf(false) }
+    val isAuto = state.timeZoneMode == TimeZoneMode.AUTO
+    val manualEnabled = !isAuto
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(dimens.medium.dp)) {
+            Text(
+                text = "Определить часовой пояс",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(dimens.tiny.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text(
-                    text = "Определить часовой пояс",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium
+                    text = "Автоопределение (GPS)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
+                Spacer(modifier = Modifier.weight(1f))
+                Switch(
+                    checked = isAuto,
+                    onCheckedChange = { enabled ->
+                        onTimeZoneModeChange(if (enabled) TimeZoneMode.AUTO else TimeZoneMode.MANUAL)
+                        if (enabled && !state.gpsPermissionGranted) {
+                            onRequestGpsPermission()
+                        }
+                    }
+                )
+            }
+            if (isAuto && !state.gpsPermissionGranted) {
                 Spacer(modifier = Modifier.height(dimens.tiny.dp))
+                Text(
+                    text = "Нужен доступ к GPS для автоопределения.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            Spacer(modifier = Modifier.height(dimens.small.dp))
+            Box {
+                val manualAlpha = if (manualEnabled) 1f else 0.5f
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .clickable(enabled = manualEnabled) { locationExpanded = true }
+                        .padding(dimens.small.dp)
                 ) {
                     Text(
-                        text = "Автоопределение (GPS)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        text = state.selectedLocation.label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = manualAlpha)
                     )
                     Spacer(modifier = Modifier.weight(1f))
-                    Switch(
-                        checked = isAuto,
-                        onCheckedChange = { enabled ->
-                            onTimeZoneModeChange(if (enabled) TimeZoneMode.AUTO else TimeZoneMode.MANUAL)
-                            if (enabled && !state.gpsPermissionGranted) {
-                                onRequestGpsPermission()
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = manualAlpha)
+                    )
+                }
+                DropdownMenu(
+                    expanded = locationExpanded && manualEnabled,
+                    onDismissRequest = { locationExpanded = false }
+                ) {
+                    timeZoneLocations.forEach { location ->
+                        DropdownMenuItem(
+                            text = { Text(text = location.label) },
+                            onClick = {
+                                onLocationChange(location)
+                                locationExpanded = false
                             }
-                        }
-                    )
-                }
-                if (isAuto && !state.gpsPermissionGranted) {
-                    Spacer(modifier = Modifier.height(dimens.tiny.dp))
-                    Text(
-                        text = "Нужен доступ к GPS для автоопределения.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-                Spacer(modifier = Modifier.height(dimens.small.dp))
-                Box {
-                    val manualAlpha = if (manualEnabled) 1f else 0.5f
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surface)
-                            .clickable(enabled = manualEnabled) { locationExpanded = true }
-                            .padding(dimens.small.dp)
-                    ) {
-                        Text(
-                            text = state.selectedLocation.label,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = manualAlpha)
                         )
-                        Spacer(modifier = Modifier.weight(1f))
-                        Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = manualAlpha)
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = locationExpanded && manualEnabled,
-                        onDismissRequest = { locationExpanded = false }
-                    ) {
-                        timeZoneLocations.forEach { location ->
-                            DropdownMenuItem(
-                                text = { Text(text = location.label) },
-                                onClick = {
-                                    onLocationChange(location)
-                                    locationExpanded = false
-                                }
-                            )
-                        }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun TimeZoneSettings(
+    state: ScheduleUiState,
+    onTimeZoneModeChange: (TimeZoneMode) -> Unit,
+    onGpsPermissionChange: (Boolean) -> Unit,
+    onLocationChange: (TimeZoneLocation) -> Unit
+) {
+    TimeZoneSettingsCard(
+        state = state,
+        onTimeZoneModeChange = onTimeZoneModeChange,
+        onLocationChange = onLocationChange,
+        onRequestGpsPermission = { onGpsPermissionChange(state.gpsPermissionGranted) }
+    )
 }
 
 @Composable
