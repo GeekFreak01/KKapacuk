@@ -430,6 +430,17 @@ private fun TimeZoneSettingsCard(
     }
 }
 
+@Suppress("UNUSED_PARAMETER")
+@Composable
+private fun TimeZoneSettings(
+    state: ScheduleUiState,
+    onTimeZoneModeChange: (TimeZoneMode) -> Unit,
+    onGpsPermissionChange: (Boolean) -> Unit,
+    onLocationChange: (TimeZoneLocation) -> Unit
+) {
+    Box(modifier = Modifier)
+}
+
 @Composable
 private fun ThemeMenuItem(
     label: String,
