@@ -1,9 +1,13 @@
 package com.example.scheduler
 
+import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,8 +31,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -45,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.material3.rememberModalBottomSheetState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +60,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
@@ -66,7 +76,10 @@ class MainActivity : ComponentActivity() {
                     ScheduleScreen(
                         state = state,
                         themeMode = themeMode,
-                        onThemeModeChange = { themeMode = it }
+                        onThemeModeChange = { themeMode = it },
+                        onTimeZoneModeChange = viewModel::setTimeZoneMode,
+                        onGpsPermissionChange = viewModel::setGpsPermissionGranted,
+                        onLocationChange = viewModel::setSelectedLocation
                     )
                 }
             }
@@ -77,7 +90,10 @@ class MainActivity : ComponentActivity() {
 data class ScheduleUiState(
     val date: LocalDate = LocalDate.now(),
     val time: LocalTime = LocalTime.now(),
-    val snapshot: ScheduleSnapshot = scheduleSnapshot(LocalDate.now(), LocalTime.now())
+    val snapshot: ScheduleSnapshot = scheduleSnapshot(LocalDate.now(), LocalTime.now()),
+    val timeZoneMode: TimeZoneMode = TimeZoneMode.AUTO,
+    val gpsPermissionGranted: Boolean = true,
+    val selectedLocation: TimeZoneLocation = timeZoneLocations.first()
 )
 
 class ScheduleViewModel : ViewModel() {
@@ -87,27 +103,52 @@ class ScheduleViewModel : ViewModel() {
     init {
         viewModelScope.launch {
             while (true) {
-                val now = LocalTime.now()
-                val date = LocalDate.now()
-                _state.value = ScheduleUiState(
+                val current = _state.value
+                val zoneId = resolveZoneId(current)
+                val now = ZonedDateTime.now(zoneId)
+                val date = now.toLocalDate()
+                val time = now.toLocalTime()
+                _state.value = current.copy(
                     date = date,
-                    time = now,
-                    snapshot = scheduleSnapshot(date, now)
+                    time = time,
+                    snapshot = scheduleSnapshot(date, time)
                 )
                 delay(1000)
             }
         }
     }
+
+    fun setTimeZoneMode(mode: TimeZoneMode) {
+        _state.value = _state.value.copy(timeZoneMode = mode)
+    }
+
+    fun setGpsPermissionGranted(granted: Boolean) {
+        _state.value = _state.value.copy(gpsPermissionGranted = granted)
+    }
+
+    fun setSelectedLocation(location: TimeZoneLocation) {
+        _state.value = _state.value.copy(selectedLocation = location)
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleScreen(
     state: ScheduleUiState,
     themeMode: ThemeMode,
-    onThemeModeChange: (ThemeMode) -> Unit
+    onThemeModeChange: (ThemeMode) -> Unit,
+    onTimeZoneModeChange: (TimeZoneMode) -> Unit,
+    onGpsPermissionChange: (Boolean) -> Unit,
+    onLocationChange: (TimeZoneLocation) -> Unit
 ) {
     val dimens = LocalDimens.current
-    var settingsExpanded by remember { mutableStateOf(false) }
+    var settingsOpen by remember { mutableStateOf(false) }
+    val bottomSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        onGpsPermissionChange(granted)
+    }
     val header = buildString {
         append(
             when (state.snapshot.variant) {
@@ -137,42 +178,11 @@ fun ScheduleScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.weight(1f))
-                    Box {
-                        IconButton(onClick = { settingsExpanded = true }) {
-                            Icon(
-                                imageVector = Icons.Filled.Settings,
-                                contentDescription = "Настройки"
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = settingsExpanded,
-                            onDismissRequest = { settingsExpanded = false }
-                        ) {
-                            ThemeMenuItem(
-                                label = "Как на устройстве",
-                                selected = themeMode == ThemeMode.SYSTEM,
-                                onClick = {
-                                    onThemeModeChange(ThemeMode.SYSTEM)
-                                    settingsExpanded = false
-                                }
-                            )
-                            ThemeMenuItem(
-                                label = "День",
-                                selected = themeMode == ThemeMode.LIGHT,
-                                onClick = {
-                                    onThemeModeChange(ThemeMode.LIGHT)
-                                    settingsExpanded = false
-                                }
-                            )
-                            ThemeMenuItem(
-                                label = "Ночь",
-                                selected = themeMode == ThemeMode.DARK,
-                                onClick = {
-                                    onThemeModeChange(ThemeMode.DARK)
-                                    settingsExpanded = false
-                                }
-                            )
-                        }
+                    IconButton(onClick = { settingsOpen = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = "Настройки"
+                        )
                     }
                 }
                 Text(
@@ -203,6 +213,224 @@ fun ScheduleScreen(
             }
         }
     }
+
+    if (settingsOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { settingsOpen = false },
+            sheetState = bottomSheetState
+        ) {
+            SettingsSheet(
+                state = state,
+                themeMode = themeMode,
+                onThemeModeChange = onThemeModeChange,
+                onTimeZoneModeChange = onTimeZoneModeChange,
+                onLocationChange = onLocationChange,
+                onRequestGpsPermission = { permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsSheet(
+    state: ScheduleUiState,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
+    onTimeZoneModeChange: (TimeZoneMode) -> Unit,
+    onLocationChange: (TimeZoneLocation) -> Unit,
+    onRequestGpsPermission: () -> Unit
+) {
+    val dimens = LocalDimens.current
+    var themeExpanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = dimens.medium.dp)
+            .padding(bottom = dimens.large.dp),
+        verticalArrangement = Arrangement.spacedBy(dimens.small.dp)
+    ) {
+        Text(
+            text = "Настройки",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(dimens.medium.dp)) {
+                Text(
+                    text = "Выбор темы",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(dimens.tiny.dp))
+                Box {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .clickable { themeExpanded = true }
+                            .padding(dimens.small.dp)
+                    ) {
+                        Text(
+                            text = themeModeLabel(themeMode),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = themeExpanded,
+                        onDismissRequest = { themeExpanded = false }
+                    ) {
+                        ThemeMenuItem(
+                            label = "Как на устройстве",
+                            selected = themeMode == ThemeMode.SYSTEM,
+                            onClick = {
+                                onThemeModeChange(ThemeMode.SYSTEM)
+                                themeExpanded = false
+                            }
+                        )
+                        ThemeMenuItem(
+                            label = "День",
+                            selected = themeMode == ThemeMode.LIGHT,
+                            onClick = {
+                                onThemeModeChange(ThemeMode.LIGHT)
+                                themeExpanded = false
+                            }
+                        )
+                        ThemeMenuItem(
+                            label = "Ночь",
+                            selected = themeMode == ThemeMode.DARK,
+                            onClick = {
+                                onThemeModeChange(ThemeMode.DARK)
+                                themeExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        TimeZoneSettingsCard(
+            state = state,
+            onTimeZoneModeChange = onTimeZoneModeChange,
+            onLocationChange = onLocationChange,
+            onRequestGpsPermission = onRequestGpsPermission
+        )
+    }
+}
+
+@Composable
+private fun TimeZoneSettingsCard(
+    state: ScheduleUiState,
+    onTimeZoneModeChange: (TimeZoneMode) -> Unit,
+    onLocationChange: (TimeZoneLocation) -> Unit,
+    onRequestGpsPermission: () -> Unit
+) {
+    val dimens = LocalDimens.current
+    var locationExpanded by remember { mutableStateOf(false) }
+    val isAuto = state.timeZoneMode == TimeZoneMode.AUTO
+    val manualEnabled = !isAuto
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(dimens.medium.dp)) {
+            Text(
+                text = "Определить часовой пояс",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(dimens.tiny.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Автоопределение (GPS)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Switch(
+                    checked = isAuto,
+                    onCheckedChange = { enabled ->
+                        onTimeZoneModeChange(if (enabled) TimeZoneMode.AUTO else TimeZoneMode.MANUAL)
+                        if (enabled && !state.gpsPermissionGranted) {
+                            onRequestGpsPermission()
+                        }
+                    }
+                )
+            }
+            if (isAuto && !state.gpsPermissionGranted) {
+                Spacer(modifier = Modifier.height(dimens.tiny.dp))
+                Text(
+                    text = "Нужен доступ к GPS для автоопределения.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            Spacer(modifier = Modifier.height(dimens.small.dp))
+            Box {
+                val manualAlpha = if (manualEnabled) 1f else 0.5f
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .clickable(enabled = manualEnabled) { locationExpanded = true }
+                        .padding(dimens.small.dp)
+                ) {
+                    Text(
+                        text = state.selectedLocation.label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = manualAlpha)
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = manualAlpha)
+                    )
+                }
+                DropdownMenu(
+                    expanded = locationExpanded && manualEnabled,
+                    onDismissRequest = { locationExpanded = false }
+                ) {
+                    timeZoneLocations.forEach { location ->
+                        DropdownMenuItem(
+                            text = { Text(text = location.label) },
+                            onClick = {
+                                onLocationChange(location)
+                                locationExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Suppress("UNUSED_PARAMETER")
+@Composable
+private fun TimeZoneSettings(
+    state: ScheduleUiState,
+    onTimeZoneModeChange: (TimeZoneMode) -> Unit,
+    onGpsPermissionChange: (Boolean) -> Unit,
+    onLocationChange: (TimeZoneLocation) -> Unit
+) {
+    Box(modifier = Modifier)
 }
 
 @Composable
@@ -298,3 +526,36 @@ fun ProgressWithHalfMarker(progress: Float) {
 }
 
 private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+enum class TimeZoneMode {
+    AUTO,
+    MANUAL
+}
+
+data class TimeZoneLocation(
+    val label: String,
+    val zoneId: ZoneId
+)
+
+private val timeZoneLocations = listOf(
+    TimeZoneLocation("Камчатка (UTC/GMT +12:00)", ZoneId.of("Asia/Kamchatka")),
+    TimeZoneLocation("Калининград (UTC+2)", ZoneId.of("Europe/Kaliningrad")),
+    TimeZoneLocation("Москва (UTC+3)", ZoneId.of("Europe/Moscow")),
+    TimeZoneLocation("Екатеринбург (UTC+5)", ZoneId.of("Asia/Yekaterinburg")),
+    TimeZoneLocation("Новосибирск (UTC+7)", ZoneId.of("Asia/Novosibirsk")),
+    TimeZoneLocation("Владивосток (UTC+10)", ZoneId.of("Asia/Vladivostok"))
+)
+
+private fun resolveZoneId(state: ScheduleUiState): ZoneId {
+    return if (state.timeZoneMode == TimeZoneMode.AUTO && state.gpsPermissionGranted) {
+        ZoneId.systemDefault()
+    } else {
+        state.selectedLocation.zoneId
+    }
+}
+
+private fun themeModeLabel(themeMode: ThemeMode): String = when (themeMode) {
+    ThemeMode.SYSTEM -> "Как на устройстве"
+    ThemeMode.LIGHT -> "День"
+    ThemeMode.DARK -> "Ночь"
+}
