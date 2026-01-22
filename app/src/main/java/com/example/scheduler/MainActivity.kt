@@ -34,7 +34,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -57,6 +56,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
@@ -777,6 +778,8 @@ fun LessonRow(lesson: Lesson, isActive: Boolean, now: LocalTime, progressBarColo
     val passed = lesson.passedMinutes(now)
     val total = lesson.durationMinutes()
     val remaining = lesson.remainingMinutes(now)
+    val breakOffset = lesson.breakOffsetMinutes()
+    val breakDuration = lesson.breakDurationMinutes()
 
     val cardColor = if (isActive) {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
@@ -806,7 +809,12 @@ fun LessonRow(lesson: Lesson, isActive: Boolean, now: LocalTime, progressBarColo
                 )
             }
             Spacer(modifier = Modifier.height(dimens.small.dp))
-            ProgressWithHalfMarker(progress = progress, progressBarColor = progressBarColor)
+            ProgressWithBreakMarker(
+                progress = progress,
+                progressBarColor = progressBarColor,
+                breakStartFraction = (breakOffset.toFloat() / total).coerceIn(0f, 1f),
+                breakDurationFraction = (breakDuration.toFloat() / total).coerceIn(0f, 1f)
+            )
             Spacer(modifier = Modifier.height(dimens.tiny.dp))
             Text(
                 text = "Осталось: ${remaining} мин",
@@ -818,29 +826,45 @@ fun LessonRow(lesson: Lesson, isActive: Boolean, now: LocalTime, progressBarColo
 }
 
 @Composable
-fun ProgressWithHalfMarker(progress: Float, progressBarColor: Color) {
-    Box(
+fun ProgressWithBreakMarker(
+    progress: Float,
+    progressBarColor: Color,
+    breakStartFraction: Float,
+    breakDurationFraction: Float
+) {
+    val trackColor = progressBarColor.copy(alpha = 0.18f)
+    val breakColor = progressBarColor.copy(alpha = 0.45f)
+    val progressFraction = progress.coerceIn(0f, 1f)
+    Canvas(
         modifier = Modifier
             .fillMaxWidth()
             .height(10.dp)
+            .clip(RoundedCornerShape(3.dp))
     ) {
-        LinearProgressIndicator(
-            progress = { progress },
-            color = progressBarColor,
-            trackColor = progressBarColor.copy(alpha = 0.18f),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .align(Alignment.Center)
-                .clip(RoundedCornerShape(3.dp))
+        val barHeight = size.height
+        val cornerRadius = barHeight / 2f
+        drawRoundRect(
+            color = trackColor,
+            size = size,
+            cornerRadius = CornerRadius(cornerRadius)
         )
-        Box(
-            modifier = Modifier
-                .width(2.dp)
-                .height(10.dp)
-                .align(Alignment.Center)
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-        )
+        if (progressFraction > 0f) {
+            drawRoundRect(
+                color = progressBarColor,
+                size = Size(size.width * progressFraction, barHeight),
+                cornerRadius = CornerRadius(cornerRadius)
+            )
+        }
+        if (breakDurationFraction > 0f) {
+            val breakStartX = size.width * breakStartFraction
+            val breakWidth = size.width * breakDurationFraction
+            drawRoundRect(
+                color = breakColor,
+                topLeft = Offset(breakStartX, 0f),
+                size = Size(breakWidth, barHeight),
+                cornerRadius = CornerRadius(cornerRadius)
+            )
+        }
     }
 }
 

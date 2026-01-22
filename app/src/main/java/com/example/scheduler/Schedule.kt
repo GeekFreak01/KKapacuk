@@ -16,8 +16,17 @@ enum class DayType {
     SATURDAY
 }
 
-data class Lesson(val start: LocalTime, val end: LocalTime) {
+data class Lesson(
+    val start: LocalTime,
+    val breakStart: LocalTime,
+    val breakEnd: LocalTime,
+    val end: LocalTime
+) {
     fun durationMinutes(): Long = Duration.between(start, end).toMinutes()
+
+    fun breakOffsetMinutes(): Long = Duration.between(start, breakStart).toMinutes()
+
+    fun breakDurationMinutes(): Long = Duration.between(breakStart, breakEnd).toMinutes()
 
     fun progress(now: LocalTime): Float {
         if (now <= start) return 0f
@@ -47,53 +56,68 @@ data class ScheduleSnapshot(
     val activeIndex: Int?
 )
 
-private val weekdayLong = listOf(
-    Lesson(LocalTime.of(9, 0), LocalTime.of(9, 45)),
-    Lesson(LocalTime.of(9, 50), LocalTime.of(10, 35)),
-    Lesson(LocalTime.of(10, 40), LocalTime.of(11, 25)),
-    Lesson(LocalTime.of(11, 30), LocalTime.of(12, 15)),
-    Lesson(LocalTime.of(12, 20), LocalTime.of(13, 5)),
-    Lesson(LocalTime.of(13, 10), LocalTime.of(13, 55)),
-    Lesson(LocalTime.of(14, 0), LocalTime.of(14, 45)),
-    Lesson(LocalTime.of(14, 50), LocalTime.of(15, 35)),
-    Lesson(LocalTime.of(15, 40), LocalTime.of(16, 25)),
-    Lesson(LocalTime.of(16, 30), LocalTime.of(17, 15)),
-    Lesson(LocalTime.of(17, 20), LocalTime.of(18, 5)),
-    Lesson(LocalTime.of(18, 10), LocalTime.of(18, 55))
+private const val BREAK_MINUTES = 5
+
+private val weekdayBetweenPairs = listOf(10, 20, 20, 10, 5)
+private val saturdayBetweenPairs = List(5) { 10 }
+
+private fun buildPairs(
+    start: LocalTime,
+    firstPartMinutes: Int,
+    secondPartMinutes: Int,
+    betweenPairsMinutes: List<Int>
+): List<Lesson> {
+    val lessons = mutableListOf<Lesson>()
+    var currentStart = start
+    val pairCount = betweenPairsMinutes.size + 1
+    repeat(pairCount) { index ->
+        val breakStart = currentStart.plusMinutes(firstPartMinutes.toLong())
+        val breakEnd = breakStart.plusMinutes(BREAK_MINUTES.toLong())
+        val end = breakEnd.plusMinutes(secondPartMinutes.toLong())
+        lessons.add(Lesson(currentStart, breakStart, breakEnd, end))
+        if (index < betweenPairsMinutes.size) {
+            currentStart = end.plusMinutes(betweenPairsMinutes[index].toLong())
+        }
+    }
+    return lessons
+}
+
+private val weekdayLong = buildPairs(
+    start = LocalTime.of(9, 0),
+    firstPartMinutes = 45,
+    secondPartMinutes = 45,
+    betweenPairsMinutes = weekdayBetweenPairs
 )
 
-private val weekdayWinter = listOf(
-    Lesson(LocalTime.of(9, 0), LocalTime.of(9, 40)),
-    Lesson(LocalTime.of(9, 45), LocalTime.of(10, 25)),
-    Lesson(LocalTime.of(10, 30), LocalTime.of(11, 10)),
-    Lesson(LocalTime.of(11, 15), LocalTime.of(11, 55)),
-    Lesson(LocalTime.of(12, 0), LocalTime.of(12, 40)),
-    Lesson(LocalTime.of(12, 45), LocalTime.of(13, 25)),
-    Lesson(LocalTime.of(13, 30), LocalTime.of(14, 10)),
-    Lesson(LocalTime.of(14, 15), LocalTime.of(14, 55)),
-    Lesson(LocalTime.of(15, 0), LocalTime.of(15, 40)),
-    Lesson(LocalTime.of(15, 45), LocalTime.of(16, 25)),
-    Lesson(LocalTime.of(16, 30), LocalTime.of(17, 10)),
-    Lesson(LocalTime.of(17, 15), LocalTime.of(17, 55))
+private val weekdayWinter = buildPairs(
+    start = LocalTime.of(9, 0),
+    firstPartMinutes = 40,
+    secondPartMinutes = 40,
+    betweenPairsMinutes = weekdayBetweenPairs
 )
 
-private val saturdayPairs = listOf(
-    Lesson(LocalTime.of(9, 0), LocalTime.of(10, 10)),
-    Lesson(LocalTime.of(10, 15), LocalTime.of(11, 25)),
-    Lesson(LocalTime.of(11, 30), LocalTime.of(12, 40)),
-    Lesson(LocalTime.of(12, 45), LocalTime.of(13, 55)),
-    Lesson(LocalTime.of(14, 0), LocalTime.of(15, 10)),
-    Lesson(LocalTime.of(15, 15), LocalTime.of(16, 25))
+private val saturdayLong = buildPairs(
+    start = LocalTime.of(9, 0),
+    firstPartMinutes = 45,
+    secondPartMinutes = 45,
+    betweenPairsMinutes = saturdayBetweenPairs
+)
+
+private val saturdayWinter = buildPairs(
+    start = LocalTime.of(9, 0),
+    firstPartMinutes = 40,
+    secondPartMinutes = 40,
+    betweenPairsMinutes = saturdayBetweenPairs
 )
 
 val schedules: Map<ScheduleVariant, Map<DayType, List<Lesson>>> = mapOf(
     ScheduleVariant.SEP_NOV_APR_JUN to mapOf(
         DayType.WEEKDAY to weekdayLong,
-        DayType.SATURDAY to saturdayPairs
+        DayType.SATURDAY to saturdayLong
     ),
     ScheduleVariant.DEC_MAR to mapOf(
         DayType.WEEKDAY to weekdayWinter,
-        DayType.SATURDAY to saturdayPairs
+        DayType.SATURDAY to saturdayWinter
     )
 )
 
