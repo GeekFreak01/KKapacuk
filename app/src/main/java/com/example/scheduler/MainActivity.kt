@@ -553,7 +553,8 @@ private fun ColorWheelPicker(
                         val distance = sqrt(dx * dx + dy * dy)
                         val clampedDistance = min(distance, radius)
                         val saturation = (clampedDistance / radius).coerceIn(0f, 1f)
-                        val hue = ((atan2(dy, dx) + PI) / (2 * PI) * 360f).toFloat()
+                        val rawAngle = atan2(dy, dx)
+                        val hue = ((Math.toDegrees(rawAngle.toDouble()) + 360.0) % 360.0).toFloat()
                         onColorChange(Color.hsv(hue, saturation, value))
                     }
                     detectTapGestures { offset -> updateColor(offset) }
@@ -587,7 +588,7 @@ private fun ColorWheelPicker(
                 center = center
             )
 
-            val angle = (hsv[0] / 360f) * (2f * PI) - PI
+            val angle = (hsv[0] / 360f) * (2f * PI)
             val indicatorRadius = 6.dp.toPx()
             val indicatorPosition = Offset(
                 x = center.x + cos(angle.toDouble()).toFloat() * radius * hsv[1],
